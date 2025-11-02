@@ -1,12 +1,19 @@
 import OnebusawaySDK from "onebusaway-sdk";
+import Redis from "ioredis";
 
 const client = new OnebusawaySDK({
     maxRetries: 3,
 });
 
+// Redis setup
+let redis: Redis | null = null;
+if (process.env.REDIS_URL) {
+    redis = new Redis(process.env.REDIS_URL);
+}
+
 // Cache setup
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
-let cache: { data: any; timestamp: number } | null = null;
+const CACHE_TTL = 5 * 60; // 5 minutes in seconds (Redis TTL)
+const CACHE_KEY = "lightrail:routes:data";
 
 // Helper function to delay execution
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -44,10 +51,17 @@ async function findSoundTransitLightRailRoutes() {
 }
 
 export async function getFormattedRouteData() {
-    // Check cache first
-    if (cache && Date.now() - cache.timestamp < CACHE_TTL) {
-        console.log("Returning cached data");
-        return cache.data;
+    // Try Redis cache first
+    if (redis) {
+        try {
+            const cachedData = await redis.get(CACHE_KEY);
+            if (cachedData) {
+                console.log("Returning cached data from Redis");
+                return JSON.parse(cachedData);
+            }
+        } catch (error) {
+            console.error("Redis error:", error);
+        }
     }
 
     console.log("Cache miss - fetching fresh data");
@@ -125,11 +139,15 @@ export async function getFormattedRouteData() {
         }
     }
 
-    // Update cache
-    cache = {
-        data: formatted_routes,
-        timestamp: Date.now(),
-    };
+    // Update cache in Redis
+    if (redis) {
+        try {
+            await redis.set(CACHE_KEY, JSON.stringify(formatted_routes), "EX", CACHE_TTL);
+            console.log("Cached data in Redis");
+        } catch (error) {
+            console.error("Redis cache error:", error);
+        }
+    }
 
     return formatted_routes;
 }
