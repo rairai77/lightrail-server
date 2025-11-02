@@ -12,7 +12,7 @@ if (process.env.REDIS_URL) {
 }
 
 // Cache setup
-const CACHE_TTL = 5 * 60; // 5 minutes in seconds (Redis TTL)
+const CACHE_TTL = 2 * 60; // 5 minutes in seconds (Redis TTL)
 const CACHE_KEY = "lightrail:routes:data";
 
 // Helper function to delay execution
@@ -85,30 +85,46 @@ export async function getFormattedRouteData() {
                         5,
                         500,
                         async (stopId: string) => {
-                            const stop = allStops?.find((s: any) => s.id === stopId);
+                            const stop = allStops?.find(
+                                (s: any) => s.id === stopId
+                            );
                             if (!stop) return null;
 
                             let nextArrival = null;
                             try {
-                                const arrivalsResponse = await client.arrivalAndDeparture.list(
-                                    stopId,
-                                    {
-                                        minutesAfter: 60,
-                                    }
-                                );
+                                const arrivalsResponse =
+                                    await client.arrivalAndDeparture.list(
+                                        stopId,
+                                        {
+                                            minutesAfter: 60,
+                                        }
+                                    );
 
-                                if (arrivalsResponse?.data?.entry?.arrivalsAndDepartures) {
-                                    const arrivals = arrivalsResponse.data.entry.arrivalsAndDepartures
-                                        .filter((arrival: any) => arrival.routeId === route.id)
-                                        .sort((a: any, b: any) => {
-                                            const aTime = a.predictedArrivalTime || a.scheduledArrivalTime;
-                                            const bTime = b.predictedArrivalTime || b.scheduledArrivalTime;
-                                            return aTime - bTime;
-                                        });
+                                if (
+                                    arrivalsResponse?.data?.entry
+                                        ?.arrivalsAndDepartures
+                                ) {
+                                    const arrivals =
+                                        arrivalsResponse.data.entry.arrivalsAndDepartures
+                                            .filter(
+                                                (arrival: any) =>
+                                                    arrival.routeId === route.id
+                                            )
+                                            .sort((a: any, b: any) => {
+                                                const aTime =
+                                                    a.predictedArrivalTime ||
+                                                    a.scheduledArrivalTime;
+                                                const bTime =
+                                                    b.predictedArrivalTime ||
+                                                    b.scheduledArrivalTime;
+                                                return aTime - bTime;
+                                            });
 
                                     if (arrivals.length > 0 && arrivals[0]) {
                                         const next = arrivals[0];
-                                        nextArrival = next.predictedArrivalTime || next.scheduledArrivalTime;
+                                        nextArrival =
+                                            next.predictedArrivalTime ||
+                                            next.scheduledArrivalTime;
                                     }
                                 }
                             } catch (error) {
@@ -142,7 +158,12 @@ export async function getFormattedRouteData() {
     // Update cache in Redis
     if (redis) {
         try {
-            await redis.set(CACHE_KEY, JSON.stringify(formatted_routes), "EX", CACHE_TTL);
+            await redis.set(
+                CACHE_KEY,
+                JSON.stringify(formatted_routes),
+                "EX",
+                CACHE_TTL
+            );
             console.log("Cached data in Redis");
         } catch (error) {
             console.error("Redis cache error:", error);
