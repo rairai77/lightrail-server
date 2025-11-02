@@ -1,4 +1,6 @@
 {
+  "buildCommand": null,
+  "outputDirectory": null,
   "functions": {
     "api/routes.ts": {
       "maxDuration": 120
