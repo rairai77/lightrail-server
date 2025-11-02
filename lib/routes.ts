@@ -104,27 +104,39 @@ export async function getFormattedRouteData() {
                                     arrivalsResponse?.data?.entry
                                         ?.arrivalsAndDepartures
                                 ) {
-                                    const arrivals =
+                                    const now = Date.now();
+                                    const upcomingArrivals =
                                         arrivalsResponse.data.entry.arrivalsAndDepartures
                                             .filter(
                                                 (arrival: any) =>
                                                     arrival.routeId === route.id
                                             )
-                                            .sort((a: any, b: any) => {
-                                                const aTime =
-                                                    a.predictedArrivalTime ||
-                                                    a.scheduledArrivalTime;
-                                                const bTime =
-                                                    b.predictedArrivalTime ||
-                                                    b.scheduledArrivalTime;
-                                                return aTime - bTime;
-                                            });
+                                            .map((arrival: any) => {
+                                                const candidateTimes = [
+                                                    arrival.predictedArrivalTime,
+                                                    arrival.scheduledArrivalTime,
+                                                ].filter(
+                                                    (time): time is number =>
+                                                        typeof time === "number" &&
+                                                        time > now
+                                                );
 
-                                    if (arrivals.length > 0 && arrivals[0]) {
-                                        const next = arrivals[0];
-                                        nextArrival =
-                                            next.predictedArrivalTime ||
-                                            next.scheduledArrivalTime;
+                                                if (candidateTimes.length === 0) {
+                                                    return null;
+                                                }
+
+                                                return Math.min(...candidateTimes);
+                                            })
+                                            .filter(
+                                                (time): time is number =>
+                                                    time !== null
+                                            )
+                                            .sort(
+                                                (a: number, b: number) => a - b
+                                            );
+
+                                    if (upcomingArrivals.length > 0) {
+                                        nextArrival = upcomingArrivals[0];
                                     }
                                 }
                             } catch (error) {
