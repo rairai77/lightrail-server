@@ -1,6 +1,8 @@
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import OnebusawaySDK from "onebusaway-sdk";
+
 const client = new OnebusawaySDK({
-    maxRetries: 3, // Increase retries for rate limit handling
+    maxRetries: 3,
 });
 
 // Helper function to delay execution
@@ -18,7 +20,6 @@ async function processBatch<T, R>(
         const batch = items.slice(i, i + batchSize);
         const batchResults = await Promise.all(batch.map(processor));
         results.push(...batchResults);
-        // Delay between batches to avoid rate limits
         if (i + batchSize < items.length) {
             await delay(delayMs);
         }
@@ -53,29 +54,25 @@ async function getFormattedRouteData() {
             const allStops = response.data.references?.stops;
             const stopGroups = stopGroupings?.[0]?.stopGroups || [];
 
-            // Map each stopGroup to a destination object with timing data
             const destinations = await Promise.all(
                 stopGroups.map(async (group: any) => {
-                    // Process stops in batches to avoid rate limits
                     const stopsWithTimings = await processBatch(
                         group.stopIds,
-                        5, // Process 5 stops at a time
-                        500, // 500ms delay between batches
+                        5,
+                        500,
                         async (stopId: string) => {
                             const stop = allStops?.find((s: any) => s.id === stopId);
                             if (!stop) return null;
 
-                            // Fetch arrival/departure times for this stop
                             let nextArrival = null;
                             try {
                                 const arrivalsResponse = await client.arrivalAndDeparture.list(
                                     stopId,
                                     {
-                                        minutesAfter: 60, // Next 60 minutes
+                                        minutesAfter: 60,
                                     }
                                 );
 
-                                // Check if response and data exist
                                 if (arrivalsResponse?.data?.entry?.arrivalsAndDepartures) {
                                     const arrivals = arrivalsResponse.data.entry.arrivalsAndDepartures
                                         .filter((arrival: any) => arrival.routeId === route.id)
@@ -85,22 +82,20 @@ async function getFormattedRouteData() {
                                             return aTime - bTime;
                                         });
 
-                                    // Get the next best arrival (predicted if available, otherwise scheduled)
                                     if (arrivals.length > 0 && arrivals[0]) {
                                         const next = arrivals[0];
                                         nextArrival = next.predictedArrivalTime || next.scheduledArrivalTime;
                                     }
                                 }
                             } catch (error) {
-                                // Silently handle errors - stop will just have null nextArrival
+                                // Silently handle errors
                             }
 
-                            // Return only essential fields
                             return {
                                 name: stop.name,
                                 lat: stop.lat,
                                 lon: stop.lon,
-                                nextArrival: nextArrival, // Unix timestamp in milliseconds, or null
+                                nextArrival: nextArrival,
                             };
                         }
                     );
@@ -112,7 +107,6 @@ async function getFormattedRouteData() {
                 })
             );
 
-            // Use route short name as the key (e.g., "1 Line")
             const routeName = route.shortName || route.longName || "Unknown";
             formatted_routes[route.id] = {
                 routeName: routeName,
@@ -124,70 +118,31 @@ async function getFormattedRouteData() {
     return formatted_routes;
 }
 
-// Bun server
-const server = Bun.serve({
-    port: 3000,
-    idleTimeout: 120, // 2 minutes timeout for slow API calls
-    async fetch(req) {
-        const url = new URL(req.url);
+export default async function handler(
+    req: VercelRequest,
+    res: VercelResponse
+) {
+    // CORS headers
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-        // CORS headers
-        const headers = {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-        };
+    // Handle CORS preflight
+    if (req.method === "OPTIONS") {
+        return res.status(200).end();
+    }
 
-        // Handle CORS preflight
-        if (req.method === "OPTIONS") {
-            return new Response(null, { headers });
-        }
+    if (req.method !== "GET") {
+        return res.status(405).json({ error: "Method not allowed" });
+    }
 
-        // GET /routes - Get all light rail route data with timings
-        if (url.pathname === "/routes" && req.method === "GET") {
-            try {
-                console.log("Fetching route data...");
-                const data = await getFormattedRouteData();
-                console.log("Route data fetched successfully");
-                return new Response(JSON.stringify(data), { headers });
-            } catch (error) {
-                console.error("Error fetching routes:", error);
-                return new Response(
-                    JSON.stringify({ error: "Failed to fetch route data" }),
-                    { status: 500, headers }
-                );
-            }
-        }
-
-        // 404 for unknown routes
-        return new Response(
-            JSON.stringify({ error: "Not found" }),
-            { status: 404, headers }
-        );
-    },
-});
-
-console.log(`Server running on http://localhost:${server.port}`);
-console.log(`Available endpoints:`);
-console.log(`  GET /routes - Get all light rail route data with next arrival times`);
-
-// Example data structure:
-// {
-//   "routeId": {
-//     "routeName": "1 Line",
-//     "destinations": [
-//       {
-//         "destination": "Angle Lake",
-//         "stops": [
-//           {
-//             "name": "Lynnwood City Center",
-//             "lat": 47.815403,
-//             "lon": -122.295185,
-//             "nextArrival": 1762105080000  // Unix timestamp in ms, or null
-//           }
-//         ]
-//       }
-//     ]
-//   }
-// }
+    try {
+        console.log("Fetching route data...");
+        const data = await getFormattedRouteData();
+        console.log("Route data fetched successfully");
+        return res.status(200).json(data);
+    } catch (error) {
+        console.error("Error fetching routes:", error);
+        return res.status(500).json({ error: "Failed to fetch route data" });
+    }
+}

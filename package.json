@@ -1,12 +1,22 @@
 {
   "name": "lightrail-server",
+  "version": "1.0.0",
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "dev": "bun run index.ts",
+    "build": "tsc"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/node": "24.9.2",
+    "@vercel/node": "5.5.3"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "onebusaway-sdk": "^1.10.11"
   }
 }
