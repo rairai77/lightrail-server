@@ -1,4 +1,4 @@
-import { getFormattedRouteData } from "./lib/routes";
+import { getFormattedRouteData } from "./lib/routes.js";
 
 // Bun server
 const server = Bun.serve({
